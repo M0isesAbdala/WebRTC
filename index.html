@@ -71,7 +71,7 @@
 
         async function init() {
             console.log('iniciado');
-            const socket = new WebSocket(`peer-to-peer.onrender.com`);
+            const socket = new WebSocket(`http://peer-to-peer.onrender.com`);
 
             socket.addEventListener('open', () => {
                 console.log('wss open');
