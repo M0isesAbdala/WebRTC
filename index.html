@@ -55,183 +55,188 @@
     <div id="videos" class="container"></div>
 
     <script>
+        function initializer() {
+            if (navigator.mediaDevices == undefined || navigator.mediaDevices.getUserMedia === undefined || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+                alert('Seu navegador não suporta acesso à câmera/microfone via getUserMedia.');
+                return;
+            }
 
-        if (navigator.mediaDevices == undefined || navigator.mediaDevices.getUserMedia === undefined || typeof navigator.mediaDevices.getUserMedia !== 'function') {
-            alert('Seu navegador não suporta acesso à câmera/microfone via getUserMedia.');
-            return;
-        }
+            const LOCAL_STORAGE_KEY = 'peer_id'
+            let localStream;
+            const videos = document.getElementById('videos');
+            const PERRS = {};
+            let myId;
 
-        const LOCAL_STORAGE_KEY = 'peer_id'
-        let localStream;
-        const videos = document.getElementById('videos');
-        const PERRS = {};
-        let myId;
+            const config = {
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            };
 
-        const config = {
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        };
+            navigator.mediaDevices.getUserMedia({
+                video: {
+                    frameRate: { ideal: 30, max: 60 },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                }, audio: true,
+            })
+                .then(stream => {
+                    localStream = stream;
+                    addVideo('local', stream, true);
+                    conect();
+                }).catch((e) => {
+                    console.log(e);
+                });
 
-        navigator.mediaDevices.getUserMedia({
-            video: {
-                frameRate: { ideal: 30, max: 60 },
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-            }, audio: true,
-        })
-            .then(stream => {
-                localStream = stream;
-                addVideo('local', stream, true);
-                init();
-            }).catch((e) => {
-                console.log(e);
-            });
+            function isMuted(flag) {
+                return flag ? 'UNMUTE' : 'MUTE';
+            }
 
-        function isMuted(flag) {
-            return flag ? 'UNMUTE' : 'MUTE';
-        }
+            async function conect() {
+                const socket = new WebSocket(`wss://peer-to-peer.onrender.com`);
 
-        async function init() {
-            const socket = new WebSocket(`wss://peer-to-peer.onrender.com`);
+                socket.addEventListener('open', () => {
+                    socket.send(JSON.stringify({ type: 'ready' }));
+                });
 
-            socket.addEventListener('open', () => {
-                socket.send(JSON.stringify({ type: 'ready' }));
-            });
+                socket.addEventListener('error', (err) => {
+                    console.error('Erro no WebSocket:', err);
+                });
 
-            socket.addEventListener('error', (err) => {
-                console.error('Erro no WebSocket:', err);
-            });
+                socket.addEventListener('close', (event) => {
+                    socket.send(JSON.stringify({ type: 'close' }));
+                });
 
-            socket.addEventListener('close', (event) => {
-                socket.send(JSON.stringify({ type: 'close' }));
-            });
+                socket.addEventListener('message', async ({ data }) => {
+                    const msg = JSON.parse(data);
 
-            socket.addEventListener('message', async ({ data }) => {
-                const msg = JSON.parse(data);
-
-                if (msg.type === 'init') {
-                    myId = msg.id;
-                    msg.peers.forEach(id => {
-                        createPeer(id, true);
-                    });
-                    return;
-                } else if (msg.type === 'new-user') {
-                    createPeer(msg.id, false);
-                    return;
-                } else if (msg.type === 'close') {
-                    let el = document.getElementById(`container-${msg.id}`);
-                    if (el !== null) {
-                        el.remove();
-                    }
-                    return;
-                }
-
-                if (PERRS[msg.from] === undefined) {
-                    return;
-                };
-
-                const pc = PERRS[msg.from];
-
-                if (msg.type === 'offer') {
-                    await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp });
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    socket.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription.sdp, to: msg.from }));
-                } else if (msg.type === 'answer') {
-                    pc.addTransceiver('video', { direction: 'recvonly' });
-                    await pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp });
-                } else if (msg.type === 'candidate') {
-                    try {
-                        await pc.addIceCandidate(msg.candidate);
-                    } catch (e) {
-                        console.warn('Erro ICE:', e);
-                    }
-                }
-            });
-
-            function createPeer(remoteId, isInitiator) {
-                const PEER_CONNECTIO = new RTCPeerConnection(config);
-                PERRS[remoteId] = PEER_CONNECTIO;
-
-                localStream.getTracks().forEach(track => PEER_CONNECTIO.addTrack(track, localStream));
-
-                PEER_CONNECTIO.onicecandidate = e => {
-                    if (e.candidate) {
-                        socket.send(JSON.stringify({ type: 'candidate', candidate: e.candidate, to: remoteId }));
-                    }
-                };
-
-                PEER_CONNECTIO.ontrack = e => {
-                    addVideo(remoteId, e.streams[0]);
-                };
-
-                if (isInitiator) {
-                    PEER_CONNECTIO.addTransceiver(localStream.getVideoTracks()[0], {
-                        direction: 'sendonly',
-                        sendEncodings: [
-                            { rid: 'low', maxBitrate: 150_000, scaleResolutionDownBy: 4.0 },
-                            { rid: 'med', maxBitrate: 500_000, scaleResolutionDownBy: 2.0 },
-                            { rid: 'hi', maxBitrate: 2_500_000 }
-                        ]
-                    });
-
-                    PEER_CONNECTIO.createOffer()
-                        .then(offer => PEER_CONNECTIO.setLocalDescription(offer))
-                        .then(() => {
-                            socket.send(JSON.stringify({ type: 'offer', sdp: PEER_CONNECTIO.localDescription.sdp, to: remoteId }));
+                    if (msg.type === 'init') {
+                        myId = msg.id;
+                        msg.peers.forEach(id => {
+                            createPeer(id, true);
                         });
+                        return;
+                    } else if (msg.type === 'new-user') {
+                        createPeer(msg.id, false);
+                        return;
+                    } else if (msg.type === 'close') {
+                        let el = document.getElementById(`container-${msg.id}`);
+                        if (el !== null) {
+                            el.remove();
+                        }
+                        return;
+                    }
+
+                    if (PERRS[msg.from] === undefined) {
+                        return;
+                    };
+
+                    const pc = PERRS[msg.from];
+
+                    if (msg.type === 'offer') {
+                        await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp });
+                        const answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+                        socket.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription.sdp, to: msg.from }));
+                    } else if (msg.type === 'answer') {
+                        pc.addTransceiver('video', { direction: 'recvonly' });
+                        await pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp });
+                    } else if (msg.type === 'candidate') {
+                        try {
+                            await pc.addIceCandidate(msg.candidate);
+                        } catch (e) {
+                            console.warn('Erro ICE:', e);
+                        }
+                    }
+                });
+
+                function createPeer(remoteId, isInitiator) {
+                    const PEER_CONNECTIO = new RTCPeerConnection(config);
+                    PERRS[remoteId] = PEER_CONNECTIO;
+
+                    localStream.getTracks().forEach(track => PEER_CONNECTIO.addTrack(track, localStream));
+
+                    PEER_CONNECTIO.onicecandidate = e => {
+                        if (e.candidate) {
+                            socket.send(JSON.stringify({ type: 'candidate', candidate: e.candidate, to: remoteId }));
+                        }
+                    };
+
+                    PEER_CONNECTIO.ontrack = e => {
+                        addVideo(remoteId, e.streams[0]);
+                    };
+
+                    if (isInitiator) {
+                        PEER_CONNECTIO.addTransceiver(localStream.getVideoTracks()[0], {
+                            direction: 'sendonly',
+                            sendEncodings: [
+                                { rid: 'low', maxBitrate: 150_000, scaleResolutionDownBy: 4.0 },
+                                { rid: 'med', maxBitrate: 500_000, scaleResolutionDownBy: 2.0 },
+                                { rid: 'hi', maxBitrate: 2_500_000 }
+                            ]
+                        });
+
+                        PEER_CONNECTIO.createOffer()
+                            .then(offer => PEER_CONNECTIO.setLocalDescription(offer))
+                            .then(() => {
+                                socket.send(JSON.stringify({ type: 'offer', sdp: PEER_CONNECTIO.localDescription.sdp, to: remoteId }));
+                            });
+                    }
                 }
+            }
+
+            function addVideo(id, stream, muted = false) {
+                const CONTAINER_ID = `container-${id}`;
+                const VIDEO_ID = `video-${id}`;
+                const MUTE_BUTTON = `btn-${id}`;
+                let container = document.getElementById(CONTAINER_ID);
+                let video = document.getElementById(VIDEO_ID);
+
+                if (!container) {
+                    container = document.createElement('div');
+                    container.className = 'item';
+
+                    if (!video) {
+                        video = document.createElement('video');
+                        video.autoplay = true;
+                        if (id === 'local') {
+                            video.style.transform = 'scaleX(-1)';
+                        }
+                        video.playsInline = true;
+                        video.srcObject = stream;
+                        video.muted = muted;
+                        video.className = 'video'
+                    }
+
+                    container.appendChild(video);
+                    if (id !== 'local') {
+                        let btnMute = document.getElementById(MUTE_BUTTON);
+                        if (!btnMute) {
+                            btnMute = document.createElement('button');
+                            btnMute.className = 'mute-button';
+                            btnMute.innerText = isMuted(muted);
+                        }
+
+                        btnMute.addEventListener('click', (event) => {
+                            event.preventDefault();
+                            video.muted = !video.muted;
+                            const TEXT = isMuted(video.muted);
+                            btnMute.innerText = TEXT
+                        });
+
+                        btnMute.id = MUTE_BUTTON;
+                        container.appendChild(btnMute);
+                    }
+                }
+
+                video.id = VIDEO_ID;
+                container.id = CONTAINER_ID;
+
+                videos.appendChild(container);
             }
         }
 
-        function addVideo(id, stream, muted = false) {
-            const CONTAINER_ID = `container-${id}`;
-            const VIDEO_ID = `video-${id}`;
-            const MUTE_BUTTON = `btn-${id}`;
-            let container = document.getElementById(CONTAINER_ID);
-            let video = document.getElementById(VIDEO_ID);
-
-            if (!container) {
-                container = document.createElement('div');
-                container.className = 'item';
-
-                if (!video) {
-                    video = document.createElement('video');
-                    video.autoplay = true;
-                    if (id === 'local') {
-                        video.style.transform = 'scaleX(-1)';
-                    }
-                    video.playsInline = true;
-                    video.srcObject = stream;
-                    video.muted = muted;
-                    video.className = 'video'
-                }
-
-                container.appendChild(video);
-                if (id !== 'local') {
-                    let btnMute = document.getElementById(MUTE_BUTTON);
-                    if (!btnMute) {
-                        btnMute = document.createElement('button');
-                        btnMute.className = 'mute-button';
-                        btnMute.innerText = isMuted(muted);
-                    }
-
-                    btnMute.addEventListener('click', (event) => {
-                        event.preventDefault();
-                        video.muted = !video.muted;
-                        const TEXT = isMuted(video.muted);
-                        btnMute.innerText = TEXT
-                    });
-
-                    btnMute.id = MUTE_BUTTON;
-                    container.appendChild(btnMute);
-                }
-            }
-
-            video.id = VIDEO_ID;
-            container.id = CONTAINER_ID;
-
-            videos.appendChild(container);
-        }
+        window.addEventListener('DOMContentLoaded', () => {
+            initializer();
+        });
     </script>
 </body>
 
