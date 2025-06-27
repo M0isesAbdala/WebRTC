@@ -192,6 +192,9 @@
                 if (!video) {
                     video = document.createElement('video');
                     video.autoplay = true;
+                    if(id === 'local'){
+                        video.style.transform = 'scaleX(-1)';
+                    }
                     video.playsInline = true;
                     video.srcObject = stream;
                     video.muted = muted;
