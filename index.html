@@ -55,6 +55,12 @@
     <div id="videos" class="container"></div>
 
     <script>
+
+        if (navigator.mediaDevices == undefined || navigator.mediaDevices.getUserMedia === undefined || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+            alert('Seu navegador não suporta acesso à câmera/microfone via getUserMedia.');
+            return;
+        }
+
         const LOCAL_STORAGE_KEY = 'peer_id'
         let localStream;
         const videos = document.getElementById('videos');
@@ -64,7 +70,6 @@
         const config = {
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         };
-
 
         navigator.mediaDevices.getUserMedia({
             video: {
@@ -192,7 +197,7 @@
                 if (!video) {
                     video = document.createElement('video');
                     video.autoplay = true;
-                    if(id === 'local'){
+                    if (id === 'local') {
                         video.style.transform = 'scaleX(-1)';
                     }
                     video.playsInline = true;
