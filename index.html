@@ -23,6 +23,8 @@
         }
 
         .item {
+            position: relative;
+            display: inline-block;
             max-height: 600px;
             flex: 1 1 calc(33.333% - 10px);
             box-sizing: border-box;
@@ -35,6 +37,19 @@
             .item {
                 flex: 1 1 100%;
             }
+        }
+
+        .mute-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 14px;
         }
     </style>
     <div id="videos" class="container"></div>
@@ -60,20 +75,20 @@
         })
             .then(stream => {
                 localStream = stream;
-                console.log('definiu');
                 addVideo('local', stream, true);
                 init();
             }).catch((e) => {
                 console.log(e);
             });
 
+        function isMuted(flag) {
+            return flag ? 'UNMUTE' : 'MUTE';
+        }
 
         async function init() {
-            console.log('iniciado');
             const socket = new WebSocket(`wss://peer-to-peer.onrender.com`);
 
             socket.addEventListener('open', () => {
-                console.log('wss open');
                 socket.send(JSON.stringify({ type: 'ready' }));
             });
 
@@ -88,11 +103,8 @@
             socket.addEventListener('message', async ({ data }) => {
                 const msg = JSON.parse(data);
 
-                console.log('WS', msg);
-
                 if (msg.type === 'init') {
                     myId = msg.id;
-                    console.log('mandar convites', msg.peers);
                     msg.peers.forEach(id => {
                         createPeer(id, true);
                     });
@@ -101,7 +113,6 @@
                     createPeer(msg.id, false);
                     return;
                 } else if (msg.type === 'close') {
-                    console.log('removeu');
                     let el = document.getElementById(`container-${msg.id}`);
                     if (el !== null) {
                         el.remove();
@@ -116,7 +127,6 @@
                 const pc = PERRS[msg.from];
 
                 if (msg.type === 'offer') {
-                    console.log('recebeu a oferta');
                     await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp });
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
@@ -140,14 +150,12 @@
                 localStream.getTracks().forEach(track => PEER_CONNECTIO.addTrack(track, localStream));
 
                 PEER_CONNECTIO.onicecandidate = e => {
-                    console.log('candidatou');
                     if (e.candidate) {
                         socket.send(JSON.stringify({ type: 'candidate', candidate: e.candidate, to: remoteId }));
                     }
                 };
 
                 PEER_CONNECTIO.ontrack = e => {
-                    console.log('🎥 Track recebida:', e.track.kind, e.streams);
                     addVideo(remoteId, e.streams[0]);
                 };
 
@@ -171,26 +179,49 @@
         }
 
         function addVideo(id, stream, muted = false) {
-            console.log('add vídeo');
             const CONTAINER_ID = `container-${id}`;
+            const VIDEO_ID = `video-${id}`;
+            const MUTE_BUTTON = `btn-${id}`;
             let container = document.getElementById(CONTAINER_ID);
+            let video = document.getElementById(VIDEO_ID);
+
             if (!container) {
                 container = document.createElement('div');
                 container.className = 'item';
-                const VIDEO_ID = `video-${id}`;
-                let video = document.getElementById(VIDEO_ID);
+
                 if (!video) {
                     video = document.createElement('video');
                     video.autoplay = true;
                     video.playsInline = true;
-                    video.muted = muted;
                     video.srcObject = stream;
+                    video.muted = muted;
                     video.className = 'video'
                 }
-                video.id = VIDEO_ID;
+
                 container.appendChild(video);
+                if (id !== 'local') {
+                    let btnMute = document.getElementById(MUTE_BUTTON);
+                    if (!btnMute) {
+                        btnMute = document.createElement('button');
+                        btnMute.className = 'mute-button';
+                        btnMute.innerText = isMuted(muted);
+                    }
+
+                    btnMute.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        video.muted = !video.muted;
+                        const TEXT = isMuted(video.muted);
+                        btnMute.innerText = TEXT
+                    });
+
+                    btnMute.id = MUTE_BUTTON;
+                    container.appendChild(btnMute);
+                }
             }
+
+            video.id = VIDEO_ID;
             container.id = CONTAINER_ID;
+
             videos.appendChild(container);
         }
     </script>
