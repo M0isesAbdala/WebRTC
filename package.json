@@ -9,11 +9,14 @@
     "@types/ws": "^8.18.1"
   },
   "scripts": {
-    "start": "bun run ./src/index.ts",
+    "start": "node run ./src/index.ts",
     "build": "bun build --target=node --format=esm --bundle ./src/index.ts --minify --outfile=dist/index.js"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18.0.0 <21"
   },
   "dependencies": {
     "express": "^5.1.0",
