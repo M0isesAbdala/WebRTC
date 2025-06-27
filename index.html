@@ -78,7 +78,7 @@
                 socket.send(JSON.stringify({ type: 'ready' }));
             });
 
-            socket.addEventListener('error', () => {
+            socket.addEventListener('error', (err) => {
                 console.error('Erro no WebSocket:', err);
             });
 
